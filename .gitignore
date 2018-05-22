@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+# posmv sample files
+*.000
+*.001
+
 # Distribution / packaging
 .Python
 build/
