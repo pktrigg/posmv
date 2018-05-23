@@ -43,15 +43,24 @@ POSMVRead.py
 20100 POS MV User diagnostic group
 
 
-Data Type Conversions from POS to Python::     
+Data Type Conversions from POS to Python::
+https://docs.python.org/2/library/struct.html
     * ALL types to python struct types
-    * signed char = 1 byte = "b"
-    * unsigned char = 1 byte = "B"
-    * XTFWORD = signed short int 2 bytes = h
-    * XTFWORD = UNsigned int 2 bytes = H (for unipolar data)
-    * DWORD = unsigned int 4 bytes = "L"
-    * short = short integer 2 bytes = "h"
-    * char = 1 byte = "c"
-	* double = 8 bytes = "d"
-	* string = n bytes = "s"
+    * signed char = 1 byte 				= "b"
+    * unsigned char = 1 byte 			= "B"
+
+    * signed int 4 bytes 				= "i"
+    * UNsigned int 4 bytes 				= "I"
+
+    * signed long int 4 bytes 			= "l"
+    * UNsigned long int 4 bytes 		= "L"
+
+    * signed short integer 2 bytes 		= "h"
+    * UNsigned short integer 2 bytes 	= "H"
+
+	* double = 8 bytes 					= "d"
+	* float = 4 bytes 					= "f"
+    
+	* char = 1 byte 					= "c"
+	* string = n bytes 					= "s"
 

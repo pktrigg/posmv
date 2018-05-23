@@ -2,18 +2,12 @@
     "version": "0.2.0",
     "configurations": [        
         {
-            "name": "Python",
+            "name": "Python: Current File",
             "type": "python",
             "request": "launch",
             "stopOnEntry": false,
             "program": "${file}",
-            "pythonPath": "python.exe",
-            "debugOptions": [
-                "WaitOnAbnormalExit",
-                "WaitOnNormalExit",
-                "RedirectOutput"
-            ],
-            "args": ["C:/development/python/0004_20110307_041009.all"]
+            "args": ["-i", "C:/development/python/posmv/20170403_0138.000", "-summary", "-s", "30"]
         }
    ]
 }
