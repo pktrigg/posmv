@@ -30,7 +30,7 @@ def main():
 	parser.add_argument('-s', dest='step', action='store', type=float, default=0, help='step through the records and sample every n seconds, e.g. -s 10')
 	parser.add_argument('-odir', dest='odir', action='store', default="", help='Specify a relative output folder e.g. -odir conditioned')
 	parser.add_argument('-summary', dest='summary', action='store_true', default=False, help='dump a summary of the records in the file')
-	parser.add_argument('-warning', dest='warning', action='store', default=",", help='dump the user requested warnings from group 10 messages, e.g. -warning GPS to dumpy messages containing the string GPS.  for everything, use -warning ,  for errors use -warning ** or -warning error')
+	parser.add_argument('-warning', dest='warning', action='store', default="", help='dump the user requested warnings from group 10 messages, e.g. -warning GPS to dumpy messages containing the string GPS.  for everything, use -warning ,  for errors use -warning ** or -warning error')
 
 	if len(sys.argv)==1:
 		parser.print_help()
@@ -38,97 +38,74 @@ def main():
 	
 	args = parser.parse_args()
 
-	fileCounter=0
 	matches				= []
 
 	if args.recursive:
 		for root, dirnames, filenames in os.walk(os.path.dirname(args.inputFile)):
 			for f in fnmatch.filter(filenames, '*.all'):
 				matches.append(os.path.join(root, f))
-				# print (matches[-1])
 	else:
 		if os.path.exists(args.inputFile):
 			matches.append (os.path.abspath(args.inputFile))
 		else:
 			for filename in glob(args.inputFile):
 				matches.append(filename)
-		# print (matches)
 
 	if len(matches) == 0:
 		print ("Nothing found in %s to condition, quitting" % args.inputFile)
 		exit()
+
+	if args.summary:
+		print ("Scanning file to count all records...")
 	
 # #################################################################################
 	#open the file for reading by creating a new POSReader class and passin in the filename to open.
 	for filename in matches:
 
-		summary = []
+		summary = {}
 		r = POSReader(filename)
+		r.findGPSWeek()
 		start_time = time.time() # time the process
-		lastRecordTime = 0
+		lastrecordTimeStamp = 0
+
+		if args.summary:
+			print ("First Record Time:", r.recordDateObject)
 
 		while r.moreData():
 			# read a datagram.  If we support it, return the datagram type and aclass for that datagram
 			# The user then needs to cPOS the read() method for the class to undertake a fileread and binary decode.  This keeps the read super quick.
 			groupID, datagram = r.readDatagram()
-			# if (r.recordTime - lastRecordTime) < args.step:
+			# if (r.recordTimeStamp - lastrecordTimeStamp) < args.step:
 			# 	continue
 			
 
-					#Multibeam Data
-			# if (groupID == 1): #"Position, Attitude"
-			# 	dg = C_CLOCK(self.fileptr, numberOfBytes)
-			# 	return dg.typeOfDatagram, dg 
-
-			# if (groupID == 2): # "Navigation Performance Metric"
-			# if (groupID == 4): # "IMU"
-			# if (groupID == 9): # "GAMS Solution"
-			# if (groupID == 10): #"General Status & FDIR"
-			# if (groupID == 20): #"IIN Solution Status"
-			# if (groupID == 21): # "Base GPS 1 Modem"
-			# if (groupID == 24): # "Aux GPS"
-			# if (groupID == 29): # "Unknown29"
-			# if (groupID == 32): # "Unknown32"
-			# if (groupID == 33): # "Unknown33"
-			# if (groupID == 34): # "Unknown34"
-			# if (groupID == 35): # "Unknown35"
-			# if (groupID == 36): # "Unknown36"
-			# if (groupID == 37): # "Unknown37"
-			# if (groupID == 38): # "Unknown38"
-			# if (groupID == 39): # "Unknown39"
-			# if (groupID == 41): # "Unknown41"
-			# if (groupID == 50): # "Unknown50"
-			# if (groupID == 51): # "Unknown51"
-			# if (groupID == 52): # "Unknown52"
-			# if (groupID == 53): # "Unknown53"
-			# if (groupID == 56): # "Unknown56"
-			# if (groupID == 61): # "Unknown61"
-			# if (groupID == 91): # "Unknown91"
-			# if (groupID == 92): # "Unknown92"
-			# if (groupID == 93): # "Unknown93"
-			# if (groupID == 99): # "Versions & Stats"
-			# if (groupID == 102): # "Sensor 1 Position, Attitude"
-			# if (groupID == 106): # "Unknown106"
-			if (groupID == 10): # "General Status & FDIR"
+			if (groupID == 1): 
 				datagram.read()
-				if (args.warning in str(datagram)):
-					print (datagram)
+			if (groupID == 10): # "MSG General Status & FDIR - ERROR MESSAGES!"
+				if args.warning:
+					if (r.recordTimeStamp - lastrecordTimeStamp) > args.step:
+						datagram.read()
+						if args.warning in str(datagram):
+							print (datagram)
+							lastrecordTimeStamp = r.recordTimeStamp
 
-				lastRecordTime = r.recordTime
 			if (groupID == 56): # "MESSAGE General data"
 				datagram.read()
+				print(datagram)
+			# if (groupID == 110): # "MV General Status & FDIR"
+			# 	if args.warning:
+			# 		if (r.recordTimeStamp - lastrecordTimeStamp) > args.step:
+			# 			datagram.read()
+			# 			print (datagram)
+			# 			lastrecordTimeStamp = r.recordTimeStamp
 
-			if (groupID == 110): # "MV General Status & FDIR"
-				datagram.read()
-				# print (datagram)
-				# lastRecordTime = r.recordTime
 			if (groupID == 111): # "Heave & True Heave"
 				datagram.read()
-				# lastRecordTime = r.recordTime
+				# lastrecordTimeStamp = r.recordTimeStamp
 			if (groupID == 112): # "NMEA Strings"
 				datagram.read()
 				# print (datagram)
-				# lastRecordTime = r.recordTime
+				# lastrecordTimeStamp = r.recordTimeStamp
 			# if (groupID == 113): # "Heave & True Heave Metrics"
 			# if (groupID == 114): # "TrueZ"
 			# if (groupID == 120): # "Unknown120"
@@ -138,11 +115,24 @@ def main():
 			# if (groupID == 20102): # "Unknown20102"
 
 			if not groupID in summary:
-				summary.append(groupID)
-
+				summary[groupID] = 1
+				# print (sorted(summary.items()))
+			else:
+				summary[groupID] += 1
+				# summary.append(groupID)
+				# summary.sort()
 
 		if args.summary:
-			print (summary)
+			totalRecords = 0
+			print ("Last Record Date:", r.recordDateObject)
+			print ("Last Record Time:", r.recordTimeStamp)
+			print ("TotalRecords, GroupName")
+			for k,v in sorted(summary.items()):
+				totalRecords += v
+				print ("%7d, %s" %(v, getDatagramName(k)))
+			print ("%10d, %s" % (totalRecords, "Total Records"))
+			print ("File Duration:" , 		from_timestamp(r.timeOrigin + r.recordTimeStamp) - r.recordDateObject)
+
 
 ###############################################################################
 class C_M56: 
@@ -155,9 +145,11 @@ class C_M56:
 		self.fileptr.seek(numberOfBytes, 1)
 		self.data = ""
 		self.timeOrigin = timeOrigin
+		self.timeStamp = 0
 
 	def __str__(self):
-		return self.name + from_timestamp(self.time1).strftime('%d/%m/%Y/%m/%d %H:%M:%S.%f')[:-3] + "," + self.data
+		# note data in records do not change!
+		return self.name + str("%d/%d/%d %d:%d:%d, %.8f, %.8f " % (self.year, self.month, self.day, self.hour, self.minute, self.second, self.latitude, self.longitude))
 
 	def read(self):
 		self.fileptr.seek(self.offset, 0)
@@ -172,10 +164,10 @@ class C_M56:
 		self.byteCount			= s[2]
 
 		# time types structure dddBB
-		self.transactionNumber	= s[3] + self.timeOrigin
-		self.hours				= s[4] + self.timeOrigin
-		self.minutes			= s[5]
-		self.seconds			= s[6]
+		self.transactionNumber	= s[3]
+		self.hour				= s[4]
+		self.minute				= s[5]
+		self.second				= s[6]
 		self.month				= s[7]
 		self.day				= s[8]
 		self.year				= s[9]
@@ -186,13 +178,15 @@ class C_M56:
 		self.horizontalPositionCEP	= s[14]
 		self.initialAltitudeRMS	= s[15]
 		self.initialDistance	= s[16]
-		self.initialRoll	= s[17]
-		self.initialPitch	= s[18]
-		self.initialHeading	= s[19]				
+		self.initialRoll		= s[17]
+		self.initialPitch		= s[18]
+		self.initialHeading		= s[19]				
 		self.pad				= s[20]
 		self.checksum			= s[21]
 		self.groupEnd			= s[22]
-
+		
+		self.timeStamp = to_timestamp(datetime.datetime(self.year, self.month, self.day, self.hour, self.minute, self.second)) + self.timeOrigin
+		
 ###############################################################################
 class C_110:
 	def __init__(self, fileptr, numberOfBytes, timeOrigin):
@@ -204,6 +198,7 @@ class C_110:
 		self.fileptr.seek(numberOfBytes, 1)
 		self.data = ""
 		self.timeOrigin = timeOrigin
+		self.timeStamp = 0
 
 	def __str__(self):
 		return "General Status (110), " + str(from_timestamp(self.time1)) + ", " + self.data
@@ -221,7 +216,7 @@ class C_110:
 		self.byteCount			= s[2]
 
 		# time types structure dddBB
-		self.time1				= s[3] + self.timeOrigin
+		self.timeStamp			= s[3] + self.timeOrigin
 		self.time2				= s[4] + self.timeOrigin
 		self.distanceTag		= s[5]
 		self.timeTypes			= s[6]
@@ -254,9 +249,10 @@ class C_111:
 		self.fileptr.seek(numberOfBytes, 1)
 		self.data = ""
 		self.timeOrigin = timeOrigin
+		self.timeStamp = 0
 
 	def __str__(self):
-		return self.name + from_timestamp(self.time1).strftime('%d/%m/%Y/%m/%d %H:%M:%S.%f')[:-3] + str(",%.3f,%.3f,%.3f,%.3f,%d" % (self.heave, self.trueHeave, self.heaveRMS, self.trueHeaveRMS, self.rejectedIMUCount))
+		return self.name + from_timestamp(self.time1).strftime('%Y/%m/%d %H:%M:%S.%f')[:-3] + str(",%.3f,%.3f,%.3f,%.3f,%d" % (self.heave, self.trueHeave, self.heaveRMS, self.trueHeaveRMS, self.rejectedIMUCount))
 
 	def read(self):
 		self.fileptr.seek(self.offset, 0)
@@ -272,7 +268,7 @@ class C_111:
 		self.byteCount			= s[2]
 
 		# time types structure dddBB
-		self.time1				= s[3] + self.timeOrigin
+		self.timeStamp			= s[3] + self.timeOrigin
 		self.time2				= s[4] + self.timeOrigin
 		self.distanceTag		= s[5]
 		self.timeTypes			= s[6]
@@ -305,7 +301,7 @@ class C_112:
 		self.timeOrigin = timeOrigin
 
 	def __str__(self):
-		return self.name + from_timestamp(self.time1).strftime('%d/%m/%Y/%m/%d %H:%M:%S.%f')[:-3] + str(",%.3f,%.3f,%.3f,%.3f,%d" % (self.heave, self.trueHeave, self.heaveRMS, self.trueHeaveRMS, self.rejectedIMUCount))
+		return self.name + from_timestamp(self.time1).strftime('%Y/%m/%d %H:%M:%S.%f')[:-3] + str(",%.3f,%.3f,%.3f,%.3f,%d" % (self.heave, self.trueHeave, self.heaveRMS, self.trueHeaveRMS, self.rejectedIMUCount))
 
 	def read(self):
 		self.fileptr.seek(self.offset, 0)
@@ -338,6 +334,66 @@ class C_112:
 		# self.groupEnd			= s[13]
 
 ###############################################################################
+class C_1: 
+	def __init__(self, fileptr, numberOfBytes, timeOrigin):
+		self.name = "Position, Velocity, Attitude (GRP:1)"
+		self.typeOfDatagram = 1
+		self.offset = fileptr.tell()
+		self.numberOfBytes = numberOfBytes
+		self.fileptr = fileptr
+		self.fileptr.seek(numberOfBytes, 1)
+		self.data = ""
+		self.timeOrigin = timeOrigin
+		self.timeStamp = 0
+
+	def __str__(self):
+		return self.name + from_timestamp(self.time1).strftime('%Y/%m/%d %H:%M:%S.%f')[:-3] + "," + self.data
+
+	def read(self):
+		self.fileptr.seek(self.offset, 0)
+		rec_fmt = '=4shh dddBB dddfffdddd8fbbH2s'
+		rec_len = struct.calcsize(rec_fmt)
+		rec_unpack = struct.Struct(rec_fmt).unpack
+		# bytesRead = rec_len
+		s = rec_unpack(self.fileptr.read(rec_len))
+		
+		# intro parameters
+		self.groupStart			= s[0]
+		self.groupID			= s[1]
+		self.byteCount			= s[2]
+
+		# time types structure dddBB
+		self.timeStamp				= s[3] + self.timeOrigin
+		self.time2					= s[4] + self.timeOrigin
+		self.distanceTag			= s[5]
+		self.timeTypes				= s[6]
+		self.distanceTypes			= s[7]
+
+		self.latitude				= s[8]
+		self.longitude				= s[9]
+		self.altitude				= s[10]
+
+		self.northVelocity			= s[11]
+		self.eastVelocity			= s[12]
+		self.downVelocity			= s[13]
+		self.vesselRoll				= s[14]
+		self.vesselPitch			= s[15]
+		self.vesselHeading			= s[16]
+		self.vesselWanderAngle		= s[17]
+		
+		self.vesselTrackAngle		= s[18]
+		self.vesselSpeed			= s[19]
+		self.vesselAngularRateLongitudinal			= s[20]
+		self.vesselAngularRateTransverse			= s[21]
+		self.vesselAngularRateDown			= s[22]
+
+		self.vesselLongitudinalAccel			= s[23]
+		self.vesselTransversAccel			= s[24]
+		self.vesselDownAccel			= s[25]
+
+		self.checksum				= s[26]
+		self.groupEnd				= s[27]
+###############################################################################
 class C_10: 
 	def __init__(self, fileptr, numberOfBytes, timeOrigin):
 		self.name = "General FDIR Metrics (10)"
@@ -348,9 +404,10 @@ class C_10:
 		self.fileptr.seek(numberOfBytes, 1)
 		self.data = ""
 		self.timeOrigin = timeOrigin
+		self.timeStamp = 0
 
 	def __str__(self):
-		return self.name + from_timestamp(self.time1).strftime('%d/%m/%Y/%m/%d %H:%M:%S.%f')[:-3] + "," + self.data
+		return self.name + str(from_timestamp(self.timeStamp)) + "," + self.data
 
 	def read(self):
 		self.fileptr.seek(self.offset, 0)
@@ -366,7 +423,7 @@ class C_10:
 		self.byteCount			= s[2]
 
 		# time types structure dddBB
-		self.time1					= s[3] + self.timeOrigin
+		self.timeStamp				= s[3] + self.timeOrigin
 		self.time2					= s[4] + self.timeOrigin
 		self.distanceTag			= s[5]
 		self.timeTypes				= s[6]
@@ -627,7 +684,6 @@ class C_10:
 		if isBitSet(self.generalStatusC, 27):
 			self.data += "Received RTCA SCAT-1 messageV, "
 
-
 		if isBitSet(self.extendedStatus, 0):
 			self.data += "Primary GPS in Marinestar HP mode, "
 		if isBitSet(self.extendedStatus, 1):
@@ -678,40 +734,71 @@ class POSReader:
 		self.fileName = POSfileName
 		self.fileptr = open(POSfileName, 'rb')		
 		self.fileSize = os.path.getsize(POSfileName)
-		self.recordDate = 0
-		self.recordTime = 0
-		self.timeOrigin = 0
+		self.recordDateObject = 0 #date object
+		self.recordTimeStamp = 0 #UTC unixtime
+		self.timeOrigin = 0 #UTC time origin for the current file (GPSWeek Number in UTC seconds sonce 1970 for a POSMV file, to which we add the fractional seconds in each record)
 
+###############################################################################
+	def __str__(self):
+		return pprint.pformat(vars(self))
+
+###############################################################################
+	def findGPSWeek(self):
 		# now try and parse the filename for the GPS week.  There may be no datagram with this!
-		#  default filename is in the format 20170403_0138.000, 20170403_0138.001 etc
+		# 1. the documentation suggests we find the GPSweek in the group 3 message.  Unfortunately it may not be there
+		# 2. if no group 3 message, we can look at the MSG10 (General Data) message, which has a time data at 1Hz.  
+		#    This is not a bad one to set the GPSweek and our self.timeOrigin as the file may roll over into a new week (pkpk lets test this to see if true)
+		# 3. As a fallback, we can parse the filename.  If the user runs wioth the default, the filename has the data within the filename itself.
+		#    default filename is in the format 20170403_0138.000, 20170403_0138.001 etc
+
+		while self.moreData():
+			# read a datagram.  If we support it, return the datagram type and aclass for that datagram
+			# The user then needs to cPOS the read() method for the class to undertake a fileread and binary decode.  This keeps the read super quick.
+			groupID, datagram = self.readDatagram()
+			
+			# Decode group 3 message for the GPSweek pkpk we can only do this once we have one for testing.  until then use the MESSAGE 10 record even though it is not very reliable
+			
+			# Decode MESSAGE 10 message for the GPSweek
+			if (groupID == 56): # "MESSAGE56: General Data"
+				datagram.read()
+				self.recordDateObject  = datetime.datetime(datagram.year, datagram.month, datagram.day, datagram.hour, datagram.minute, int(datagram.second))				
+				self.week, gpsWeekinUTCSeconds, gpsWeekInGPSSeconds, gpsDayofWeek, gpsSecondsOfWeek, microseconds = self.utcToWeekSeconds(self.recordDateObject, 0)
+				self.timeOrigin = gpsWeekinUTCSeconds
+				# we have a record, so quit
+				self.rewind()
+				return
+			# if (groupID == 1): # "GRP1: Position & Velocity" #does not havew week number!!
+			# 	datagram.read()
+			# 	self.recordDateObject
+			# 	dd = from_timestamp(datagram.timeStamp)
+			# 	self.timeOrigin = gpsWeekinUTCSeconds(dd, 0)
+		
 		try:
 			base = os.path.basename(POSfileName)
 			name = os.path.splitext(base)[0]
 			fileDate = datetime.datetime.strptime(name[0:8],"%Y%m%d")
-			self.week, gpsWeekInSeconds, gpsDayofWeek, gpsSecondsOfWeek, microseconds = self.utcToWeekSeconds(fileDate, 16)
-			self.timeOrigin = gpsWeekInSeconds
+			# self.week, gpsWeekInSeconds, gpsDayofWeek, gpsSecondsOfWeek, microseconds = self.utcToWeekSeconds(fileDate, 0)
+			self.week, gpsWeekinUTCSeconds, gpsWeekInGPSSeconds, gpsDayofWeek, gpsSecondsOfWeek, microseconds = self.utcToWeekSeconds(fileDate, 0)
+			self.timeOrigin = gpsWeekinUTCSeconds
 			# self.weekInSeconds = self.utcToWeekSeconds
 			date = self.weekSecondsToUtc(self.week, 0,0)
 			print ("FileName: %s GPS Week: %d $s" % (POSfileName, self.week, date))
 		except:
 			self.week = 0
 			print ("filename does not contain a valid GPS week signature, timestamp correction needs to come from a datagram: ", POSfileName)
-###############################################################################
-	def __str__(self):
-		return pprint.pformat(vars(self))
 
 ###############################################################################
-	def currentRecordDateTime(self):
+	def currentrecordDateObjectTime(self):
 		'''return a python date object from the current datagram objects raw date and time fields '''
-		# date_object = datetime.strptime(str(self.recordDate), '%Y%m%d') + timedelta(0,self.recordTime)
-		date_object = from_timestamp(self.recordTime)
+		# date_object = datetime.strptime(str(self.recordDateObject), '%Y%m%d') + timedelta(0,self.recordTimeStamp)
+		date_object = from_timestamp(self.recordTimeStamp)
 		return date_object
 
 ###############################################################################
-	def to_DateTime(self, recordDate, recordTime):
-		'''return a python date object from a split date and time record'''
-		date_object = datetime.strptime(str(recordDate), '%Y%m%d') + timedelta(0,recordTime)
-		return date_object
+	# def to_DateTime(self, recordDateObject, recordTimeStamp):
+	# 	'''return a python date object from a split date and time record'''
+	# 	date_object = datetime.strptime(str(recordDateObject), '%Y%m%d') + timedelta(0,recordTimeStamp)
+	# 	return date_object
 
 ###############################################################################
 # https://stackoverflow.com/questions/45422739/gps-time-in-weeks-since-epoch-in-python	
@@ -735,11 +822,15 @@ class POSReader:
 		gpsweek = tdiff.days // 7 
 		gpsDayofWeek = tdiff.days - (7 * gpsweek)
 		gpsSecondsOfWeek = tdiff.seconds + 86400* (tdiff.days - (7 * gpsweek))
-		gpsWeekInSeconds = tdiff.seconds + 86400* (7 * gpsweek)
+		gpsWeekInGPSSeconds = 86400* (7 * gpsweek)
+		UnixTimeOrigin = datetime.datetime(1970,1,1)
+		UnixTimeOrigin = datetime.datetime(1970,1,1)
+		
+		gpsWeekInUTCSeconds = gpsWeekInGPSSeconds + (epoch - UnixTimeOrigin).total_seconds()
 
 		# date = self.weekSecondsToUtc(gpsweek, gpsSecondsOfWeek, leapseconds)
 
-		return gpsweek, gpsWeekInSeconds, gpsDayofWeek, gpsSecondsOfWeek,  tdiff.microseconds
+		return gpsweek, gpsWeekInUTCSeconds, gpsWeekInGPSSeconds, gpsDayofWeek, gpsSecondsOfWeek,  tdiff.microseconds
 
 ###############################################################################
 	def readDatagramHeader(self):
@@ -758,14 +849,15 @@ class POSReader:
 				# we are dealing with messages rather than groups, so the format after the first 3 params is different, so quit.
 				if groupStart.decode("utf-8") == "$MSG":
 					# print ("message:", groupID)
-					return numberOfBytes + 8, groupID, self.recordDate, self.recordTime
+					return numberOfBytes + 8, groupID, self.recordTimeStamp
 
-				self.recordDate			= s[3] + self.timeOrigin #GPS seconds of the week using user prefernece.  We normally use this and the default is fine
-				self.recordTime			= s[4] + self.timeOrigin #GPS seconds of the week in POS time (time since startup)
+				# self.recordDateObject			= s[3] + self.timeOrigin #GPS seconds of the week using user prefernece.  We normally use this and the default is fine
+				# self.recordTimeStamp			= s[4] + self.timeOrigin #GPS seconds of the week in POS time (time since startup)
+				self.recordTimeStamp			= s[4] 
 				# distanceTag		= s[5]
 				# timeTypes		= s[6]
 								
-				return numberOfBytes + 8, groupID, self.recordDate, self.recordTime
+				return numberOfBytes + 8, groupID, self.recordTimeStamp
 			except struct.error:
 				return 0,0,0,0,0,0
 
@@ -804,7 +896,7 @@ class POSReader:
 		count = 0
 		self.rewind()
 		while self.moreData():
-			numberOfBytes, groupID, RecordDate, RecordTime = self.readDatagramHeader()
+			numberOfBytes, groupID, recordTimeStamp = self.readDatagramHeader()
 			self.fileptr.seek(numberOfBytes, 1)
 			count += 1
 		self.rewind()		
@@ -813,8 +905,11 @@ class POSReader:
 ###############################################################################
 	def readDatagram(self):
 		'''read the datagram header.  This permits us to skip datagrams we do not support'''
-		numberOfBytes, groupID, RecordDate, RecordTime = self.readDatagramHeader()
+		numberOfBytes, groupID, recordTimeStamp = self.readDatagramHeader()
 
+		if groupID == 1: 
+			dg = C_1(self.fileptr, numberOfBytes, self.timeOrigin)
+			return dg.typeOfDatagram, dg 
 		if groupID == 10: 
 			dg = C_10(self.fileptr, numberOfBytes, self.timeOrigin)
 			return dg.typeOfDatagram, dg 
@@ -854,85 +949,85 @@ def getDatagramName(groupID):
 	'''Convert the datagram type from the code to a user readable string.  Handy for displaying to the user'''
 
 	if (groupID == 1):
-		return "Position, Attitude"
+		return "GRP:01:Position, Attitude"
 	if (groupID == 2):
-		return "Navigation Performance Metric"
+		return "GRP:02:Navigation Performance Metric"
 	if (groupID == 4):
-		return "IMU"
+		return "GRP04:IMU"
 	if (groupID == 9):
-		return "GAMS Solution"
+		return "GRP9:GAMS Solution"
 	if (groupID == 10):
-		return "General Status & FDIR"
+		return "GRP10:General Status & FDIR"
 	if (groupID == 20):
-		return "IIN Solution Status"
+		return "GRP20:IIN Solution Status"
 	if (groupID == 21):
-		return "Base GPS 1 Modem"
+		return "GRP:21:Base GPS 1 Modem"
 	if (groupID == 24):
-		return "Aux GPS"
+		return "GRP:24:Aux GPS"
 	if (groupID == 29):
-		return "Unknown29"
+		return "GRP29:GNSS Receiver MarineSTAR Status"
 	if (groupID == 32):
-		return "Unknown32"
+		return "MSG:32:Set POS IP Address"
 	if (groupID == 33):
-		return "Unknown33"
+		return "MSG:33:Event Discrete Setup"
 	if (groupID == 34):
-		return "Unknown34"
+		return "MSG:34:COM Port Setup"
 	if (groupID == 35):
-		return "Unknown35"
+		return "MSG:35:NMEA Output Setup"
 	if (groupID == 36):
-		return "Unknown36"
+		return "MSG:36:Binary Output Setup"
 	if (groupID == 37):
-		return "Unknown37"
+		return "MSG:37:Base GPS1 Setup"
 	if (groupID == 38):
-		return "Unknown38"
+		return "MSG:38:Base GPS2 Setup"
 	if (groupID == 39):
-		return "Unknown39"
+		return "MSG:39:Aux GPS Setup"
 	if (groupID == 41):
-		return "Unknown41"
+		return "MSG:41:Primary GPS Integrated DGPS Source Control"
 	if (groupID == 50):
-		return "Unknown50"
+		return "MSG:50:Navigation Mode Control"
 	if (groupID == 51):
-		return "Unknown51"
+		return "MSG:51:Display Port Control"
 	if (groupID == 52):
-		return "Unknown52"
+		return "MSG:52:Realtime Date Port Control"
 	if (groupID == 53):
-		return "Unknown53"
+		return "MSG:53:Logging Port Control"
 	if (groupID == 56):
-		return "Unknown56"
+		return "MSG:56:General Data"
 	if (groupID == 61):
-		return "Unknown61"
+		return "MSG:61:Loggin Data Port Control"
 	if (groupID == 91):
-		return "Unknown91"
+		return "MSG:91:GPS Control"
 	if (groupID == 92):
 		return "Unknown92"
 	if (groupID == 93):
 		return "Unknown93"
 	if (groupID == 99):
-		return "Versions & Stats"
+		return "GRP:99:Versions & Stats"
 	if (groupID == 102):
-		return "Sensor 1 Position, Attitude"
+		return "GRP:102:Sensor 1 Position, Attitude"
 	if (groupID == 106):
-		return "Unknown106"
+		return "MSG:106:Heave Filter Setup"
 	if (groupID == 110):
-		return "MV General Status & FDIR"
+		return "GRP:110:MV General Status & FDIR"
 	if (groupID == 111):
-		return "True Heave"
+		return "GRP:111:True Heave"
 	if (groupID == 112):
-		return "NMEA"
+		return "GRP:112:NMEA"
 	if (groupID == 113):
-		return "True Heave Metrics"
+		return "GRP:113:True Heave Metrics"
 	if (groupID == 114):
-		return "TrueZ"
+		return "GRP:114:TrueZ"
 	if (groupID == 120):
-		return "Unknown120"
+		return "MSG:120:Sensor Parameter Setup"
 	if (groupID == 135):
-		return "Unknown135"
+		return "MSG:135:NMEA Output Setup"
 	if (groupID == 136):
-		return "Unknown136"
+		return "MSG:136:Binary Output Setup"
 	if (groupID == 10001):
-		return "Primary GPS Stream"
+		return "GRP:10012:Primary GPS Stream"
 	if (groupID == 20102):
-		return "Unknown20102"
+		return "MSG:20102:Binary Output Diagnostics"
 
 
 def isBitSet(int_type, offset):
@@ -940,8 +1035,8 @@ def isBitSet(int_type, offset):
 	mask = 1 << offset
 	return (int_type & (1 << offset)) != 0
 
-def to_timestamp(recordDate):
-	return (recordDate - datetime.datetime(1970, 1, 1)).total_seconds()
+def to_timestamp(recordDateObject):
+	return (recordDateObject - datetime.datetime(1970, 1, 1)).total_seconds()
 
 def from_timestamp(unixtime):
 	return datetime.datetime(1970, 1 ,1) + timedelta(seconds=unixtime)

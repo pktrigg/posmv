@@ -7,7 +7,9 @@
             "request": "launch",
             "stopOnEntry": false,
             "program": "${file}",
-            "args": ["-i", "C:/development/python/posmv/20170403_0138.000", "-summary", "-s", "30"]
+			"args": ["-i", "E:/000/reelax_and_capricornus/20161106_LeePt-C.000", "-warning", ","]
+			
         }
-   ]
+	]
 }
+"args": ["-i", "C:/development/python/posmv/20170403_0138.000", "-warning", ",", "-s", "30"]

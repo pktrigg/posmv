@@ -9,15 +9,18 @@ POSMVRead.py
 * developed for Python version 3.4 
 
 * 2DO
-* determine the GPS week so we can probide correct time stamps
-* test the file name for the GPS week
-* test the NMEA strings for GPS week
-* test the group 3 message for GPS week (primary GPS)
-* test the group 11,12,13 message for GPS week (aux GPS)
 * 
 * DONE
+* test the file name for the GPS week
+* determine the GPS week so we can provide correct time stamps
 * basic loop through the file reading the header and skipping the data
 * core loop
+* MESSAGE 56 does not change in terms throughout the file of timestamp or date.  All messages are identical
+
+Time Of Week
+* test the group 11,12,13 message for GPS week (aux GPS)
+* test the group 3 message for GPS week (primary GPS)
+* test the NMEA strings for GPS week
 
 ##GROUPS##
 0 - 99 POS Core User data groups
