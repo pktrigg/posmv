@@ -9,7 +9,10 @@ POSMVRead.py
 * developed for Python version 3.4 
 
 * 2DO
-* 
+* decode heave pitch roll into GG attitude file format
+* decode positions from group 1 to csv
+* decode true heave from group 111
+
 * DONE
 * test the file name for the GPS week
 * determine the GPS week so we can provide correct time stamps
