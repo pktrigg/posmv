@@ -30,6 +30,7 @@ def main():
 	parser.add_argument('-s', dest='step', action='store', type=float, default=0, help='step through the records and sample every n seconds, e.g. -s 10')
 	parser.add_argument('-odir', dest='odir', action='store', default="", help='Specify a relative output folder e.g. -odir conditioned')
 	parser.add_argument('-summary', dest='summary', action='store_true', default=False, help='dump a summary of the records in the file')
+	parser.add_argument('-installation', dest='installation', action='store_true', default=False, help='dump the install records in the file so we can QC changes')
 	parser.add_argument('-trueheave', dest='trueheave', action='store_true', default=False, help='dump the TRUE HEAVE from group 111 at full rate')
 	parser.add_argument('-position', dest='position', action='store_true', default=False, help='dump the POSITION from group 1 at full recorded rate (1Hz)')
 	parser.add_argument('-attitude', dest='attitude', action='store_true', default=False, help='dump the ATTITUDE from group 4 at full recorded rate (1Hz)')
@@ -69,8 +70,9 @@ def main():
 		summary = {}
 		r = POSReader(filename)
 		r.findGPSWeek()
-		start_time = time.time() # time the process
-		lastrecordTimeStamp = 0
+		# start_time = time.time() # time the process
+		lastrecordTimeStamp = to_timestamp(r.fileStartDateObject)
+		lastMsg = "" # reduce the output of duplicate strings.
 
 		if args.summary:
 			print ("First Record Time:", r.fileStartDateObject)
@@ -80,6 +82,24 @@ def main():
 			# read a datagram.  If we support it, return the datagram type and a class for that datagram
 			# The user then needs to cPOS the read() method for the class to undertake a fileread and binary decode.  This keeps the read super quick.
 			groupID, datagram = r.readDatagram()
+
+			# if (groupID == 29): # marinestar status
+			# 	datagram.read()
+
+			if args.installation:
+				if (groupID == 20): # GeneralInstallation
+					datagram.read()
+					if totalRecords== 0:
+						print ("Date, Filename," + datagram.header())
+					totalRecords += 1
+					msg = str(datagram)
+					if msg == lastMsg:
+						continue
+					# the installation has changed, so print it
+					print (str(from_timestamp(lastrecordTimeStamp)) +", " + filename + ", " + msg)
+					lastrecordTimeStamp = r.recordTimeStamp
+					lastMsg = msg
+					continue
 			
 			if args.warning:
 				if (groupID == 10): # "MSG General Status & FDIR - ERROR MESSAGES!"
@@ -155,7 +175,7 @@ class C_M56:
 
 	def read(self):
 		self.fileptr.seek(self.offset, 0)
-		rec_fmt = '=4shh h5bhbdddffddddhh2s'
+		rec_fmt = '=4sHH h5bhbdddffddddhh2s'
 		rec_len = struct.calcsize(rec_fmt)
 		rec_unpack = struct.Struct(rec_fmt).unpack
 		s = rec_unpack(self.fileptr.read(rec_len))
@@ -207,7 +227,7 @@ class C_110:
 
 	def read(self):
 		self.fileptr.seek(self.offset, 0)
-		rec_fmt = '=4shh dddBB hhhh2s'
+		rec_fmt = '=4sHH dddBB hhhh2s'
 		rec_len = struct.calcsize(rec_fmt)
 		rec_unpack = struct.Struct(rec_fmt).unpack
 		# bytesRead = rec_len
@@ -261,7 +281,7 @@ class C_111:
 
 	def read(self):
 		self.fileptr.seek(self.offset, 0)
-		rec_fmt = '=4shh dddBB ffLffddLLhh2s'
+		rec_fmt = '=4sHH dddBB ffLffddLLhh2s'
 		rec_len = struct.calcsize(rec_fmt)
 		rec_unpack = struct.Struct(rec_fmt).unpack
 		# bytesRead = rec_len
@@ -294,6 +314,109 @@ class C_111:
 		self.groupEnd			= s[19]
 
 ###############################################################################
+class C_14:
+	def __init__(self, fileptr, numberOfBytes, timeOrigin):
+		self.typeOfDatagram = 14
+		self.name = getDatagramName(self.typeOfDatagram)
+		self.offset = fileptr.tell()
+		self.numberOfBytes = numberOfBytes
+		self.fileptr = fileptr
+		self.fileptr.seek(numberOfBytes, 1)
+		self.data = ""
+		self.timeOrigin = timeOrigin
+
+	def __str__(self):
+		return self.name + from_timestamp(self.time1).strftime('%Y/%m/%d %H:%M:%S.%f')[:-3] + str(",%.3f,%.3f,%.3f,%.3f,%d" % (self.heave, self.trueHeave, self.heaveRMS, self.trueHeaveRMS, self.rejectedIMUCount))
+
+	def read(self):
+		self.fileptr.seek(self.offset, 0)
+		self.data = self.fileptr.read(self.numberOfBytes)
+
+		self.fileptr.seek(self.offset, 0)
+		rec_fmt = '=4sHH dddBB BBLHBB HBB H3B 4B 4B 6B Bh2s'
+		rec_len = struct.calcsize(rec_fmt)
+		rec_unpack = struct.Struct(rec_fmt).unpack
+		# bytesRead = rec_len
+		s = rec_unpack(self.fileptr.read(rec_len))
+		print(s)
+
+###############################################################################
+class C_20:#MSG 20General Installation
+	def __init__(self, fileptr, numberOfBytes, timeOrigin):
+		self.typeOfDatagram = 20
+		self.name = getDatagramName(self.typeOfDatagram)
+		self.offset = fileptr.tell() 			# remember where we started
+		self.numberOfBytes = numberOfBytes 		# remember the number of bytes in this record
+		self.fileptr = fileptr 					# remember the file pointer
+		self.fileptr.seek(numberOfBytes, 1)  	# jump to the end of the record so we can autoread the next one
+		self.data = ""							# a byte bucket just in case
+		self.timeOrigin = timeOrigin 			# remember the time origin sowe can compute the correct time based on GPS week
+
+	def header(self):
+		return "Ref2IMU_X, Ref2IMU_Y, Ref2IMU_Z, Ref2PrimaryGPS_X, Ref2PrimaryGPS_Y, Ref2PrimaryGPS_Z, Ref2Aux1GPS_X, Ref2Aux1GPS_Y, Ref2Aux1GPS_Z, Ref2Aux2GPS_X, Ref2Aux2GPS_Y, Ref2Aux2GPS_Z, IMU2RefFrameAngle_X, IMU2RefFrameAngle_Y, IMU2RefFrameAngle_Z, RefFrame2VesselFrameAngle_X, RefFrame2VesselFrameAngle_Y, RefFrame2VesselFrameAngle_Z "
+
+	def __str__(self):
+		return str("%.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f,%.3f, %.3f, %.3f, %.3f, %.3f, %.3f,   " % (self.Ref2IMU_X, self.Ref2IMU_Y, self.Ref2IMU_Z, self.Ref2PrimaryGPS_X, self.Ref2PrimaryGPS_Y, self.Ref2PrimaryGPS_Z, self.Ref2Aux1GPS_X, self.Ref2Aux1GPS_Y, self.Ref2Aux1GPS_Z, self.Ref2Aux2GPS_X, self.Ref2Aux2GPS_Y, self.Ref2Aux2GPS_Z, self.IMU2RefFrameAngle_X, self.IMU2RefFrameAngle_Y, self.IMU2RefFrameAngle_Z, self.RefFrame2VesselFrameAngle_X, self.RefFrame2VesselFrameAngle_Y, self.RefFrame2VesselFrameAngle_Z))
+		
+
+	def read(self):
+		self.fileptr.seek(self.offset, 0)
+		self.data = self.fileptr.read(self.numberOfBytes)
+
+		self.fileptr.seek(self.offset, 0)
+		rec_fmt = '=4sHH HB BB 18f B hH2s'
+		rec_len = struct.calcsize(rec_fmt)
+		rec_unpack = struct.Struct(rec_fmt).unpack
+		s = rec_unpack(self.fileptr.read(rec_len))
+		self.Ref2IMU_X						= s[7]
+		self.Ref2IMU_Y						= s[8]
+		self.Ref2IMU_Z						= s[9]
+		self.Ref2PrimaryGPS_X				= s[10]
+		self.Ref2PrimaryGPS_Y				= s[11]
+		self.Ref2PrimaryGPS_Z				= s[12]
+		self.Ref2Aux1GPS_X					= s[13]
+		self.Ref2Aux1GPS_Y					= s[14]
+		self.Ref2Aux1GPS_Z					= s[15]
+		self.Ref2Aux2GPS_X					= s[16]
+		self.Ref2Aux2GPS_Y					= s[17]
+		self.Ref2Aux2GPS_Z					= s[18]
+		self.IMU2RefFrameAngle_X			= s[19]
+		self.IMU2RefFrameAngle_Y			= s[20]
+		self.IMU2RefFrameAngle_Z			= s[21]
+		self.RefFrame2VesselFrameAngle_X	= s[22]
+		self.RefFrame2VesselFrameAngle_Y	= s[23]
+		self.RefFrame2VesselFrameAngle_Z	= s[24]
+
+		# print (s)
+###############################################################################
+class C_29:
+	def __init__(self, fileptr, numberOfBytes, timeOrigin):
+		self.typeOfDatagram = 29
+		self.name = getDatagramName(self.typeOfDatagram)
+		self.offset = fileptr.tell()
+		self.numberOfBytes = numberOfBytes
+		self.fileptr = fileptr
+		self.fileptr.seek(numberOfBytes, 1)
+		self.data = ""
+		self.timeOrigin = timeOrigin
+
+	def __str__(self):
+		return self.name + from_timestamp(self.time1).strftime('%Y/%m/%d %H:%M:%S.%f')[:-3] + str(",%.3f,%.3f,%.3f,%.3f,%d" % (self.heave, self.trueHeave, self.heaveRMS, self.trueHeaveRMS, self.rejectedIMUCount))
+
+	def read(self):
+		self.fileptr.seek(self.offset, 0)
+		self.data = self.fileptr.read(self.numberOfBytes)
+
+		self.fileptr.seek(self.offset, 0)
+		rec_fmt = '=4shh dddBB BBLHBB HBB H3B 4B 4B 6B Bh2s'
+		rec_len = struct.calcsize(rec_fmt)
+		rec_unpack = struct.Struct(rec_fmt).unpack
+		# bytesRead = rec_len
+		s = rec_unpack(self.fileptr.read(rec_len))
+		print(s)
+
+
+###############################################################################
 class C_112:
 	def __init__(self, fileptr, numberOfBytes, timeOrigin):
 		self.name = "NMEA Strings (112)"
@@ -314,7 +437,7 @@ class C_112:
 
 		# halt development as we have no example for testing...
 		# self.fileptr.seek(self.offset, 0)
-		# rec_fmt = '=4shh dddBB H'
+		# rec_fmt = '=4sHH dddBB H'
 		# rec_len = struct.calcsize(rec_fmt)
 		# rec_unpack = struct.Struct(rec_fmt).unpack
 		# # bytesRead = rec_len
@@ -359,7 +482,7 @@ class C_4:
 
 	def read(self):
 		self.fileptr.seek(self.offset, 0)
-		rec_fmt = '=4shh dddBB 29s B H2s'
+		rec_fmt = '=4sHH dddBB 29s B H2s'
 		rec_len = struct.calcsize(rec_fmt)
 		rec_unpack = struct.Struct(rec_fmt).unpack
 		# bytesRead = rec_len
@@ -404,7 +527,7 @@ class C_1:
 
 	def read(self):
 		self.fileptr.seek(self.offset, 0)
-		rec_fmt = '=4shh dddBB dddfffdddd8fbbH2s'
+		rec_fmt = '=4sHH dddBB dddfffdddd8fbbH2s'
 		rec_len = struct.calcsize(rec_fmt)
 		rec_unpack = struct.Struct(rec_fmt).unpack
 		# bytesRead = rec_len
@@ -464,7 +587,7 @@ class C_10:
 
 	def read(self):
 		self.fileptr.seek(self.offset, 0)
-		rec_fmt = '=4shh dddBB LLLLHHHHHLH2s'
+		rec_fmt = '=4sHH dddBB LLLLHHHHHLH2s'
 		rec_len = struct.calcsize(rec_fmt)
 		rec_unpack = struct.Struct(rec_fmt).unpack
 		# bytesRead = rec_len
@@ -776,7 +899,7 @@ class POSReader:
 	# checksum		2 ushort
 	# group end		2 char
 	#  time distance fields are dddBB
-	POSPacketHeader_fmt = '=4shhdddBB'
+	POSPacketHeader_fmt = '=4sHHdddBB'
 	POSPacketHeader_len = struct.calcsize(POSPacketHeader_fmt)
 	POSPacketHeader_unpack = struct.Struct(POSPacketHeader_fmt).unpack_from
 
@@ -978,6 +1101,12 @@ class POSReader:
 			return dg.typeOfDatagram, dg 
 		if groupID == 10: 
 			dg = C_10(self.fileptr, numberOfBytes, self.timeOrigin)
+			return dg.typeOfDatagram, dg 
+		if groupID == 20: 
+			dg = C_20(self.fileptr, numberOfBytes, self.timeOrigin)
+			return dg.typeOfDatagram, dg 
+		if groupID == 29: 
+			dg = C_29(self.fileptr, numberOfBytes, self.timeOrigin)
 			return dg.typeOfDatagram, dg 
 		if groupID == 56: 
 			dg = C_M56(self.fileptr, numberOfBytes, self.timeOrigin)

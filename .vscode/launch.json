@@ -7,7 +7,7 @@
             "request": "launch",
             "stopOnEntry": false,
             "program": "${file}",
-			"args": ["-i", "C:/development/python/posmv/20170403_0138.000", "-summary"]
+			"args": ["-i", "C:/development/python/posmv/20170403_0138.000", "-installation"]
 			
         }
 	]
